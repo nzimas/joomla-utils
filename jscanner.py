@@ -1,22 +1,22 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-import argparse
 import time
 import re
 
 # User-defined settings
 default_username = "username"
-default_password = "password"
+default_password = "pw"
 default_output = "report.txt"
 default_report_404 = "yes"
 default_scan_limit = 0
-default_nav_links_only = "no"
+default_nav_links_only = "yes"
 default_exclude_terminations = ["/file"]  # URLs ending with these terms will be excluded from 404 reporting
 default_exclude_downloads = "yes"  # Exclude links to downloadable files from 404 reporting
+default_include_assets = "yes"  # Whether to include assets in the scan and report missing assets as 404 errors
 
 class JoomlaSiteScanner:
-    def __init__(self, base_url, username, password, report_404=True, scan_limit=0, nav_links_only=False, exclude_terminations=None, exclude_downloads=True):
+    def __init__(self, base_url, username, password, report_404=True, scan_limit=0, nav_links_only=False, exclude_terminations=None, exclude_downloads=True, include_assets=False):
         self.base_url = base_url
         self.username = username
         self.password = password
@@ -25,6 +25,7 @@ class JoomlaSiteScanner:
         self.nav_links_only = nav_links_only
         self.exclude_terminations = exclude_terminations if exclude_terminations else []
         self.exclude_downloads = exclude_downloads
+        self.include_assets = include_assets
         self.session = requests.Session()
         self.visited_urls = set()
         self.errors = []
@@ -111,6 +112,10 @@ class JoomlaSiteScanner:
             return True
         return False
 
+    def is_asset_link(self, url):
+        # Check if the URL points to a typical asset (e.g., images, CSS, JavaScript)
+        return re.search(r"\.(png|jpg|jpeg|gif|css|js|svg)$", url, re.IGNORECASE)
+
     def scan_url(self, url, origin_url=None):
         if url in self.visited_urls or not self.is_valid_url(url):
             return
@@ -133,10 +138,11 @@ class JoomlaSiteScanner:
             self.visited_urls.add(url)
             self.stats["total_pages"] += 1
 
-            if response.status_code != 200:
-                if response.status_code == 404 and (not self.report_404 or self.should_exclude_404(url)):
-                    return
-                if response.status_code == 404 and self.exclude_downloads and self.is_download_link(response):
+            # Skip reporting 404 errors for assets if include_assets is set to "no"
+            if response.status_code == 404:
+                if (not self.report_404 or self.should_exclude_404(url) or
+                        (not self.include_assets and self.is_asset_link(url)) or
+                        (self.exclude_downloads and self.is_download_link(response))):
                     return
                 self.errors.append((url, response.status_code))
                 self.stats["total_errors"] += 1
@@ -195,30 +201,24 @@ class JoomlaSiteScanner:
             file.write(self.generate_report())
 
 def main():
-    parser = argparse.ArgumentParser(description="Simple Joomla Site Scanner with Authentication")
-    parser.add_argument("base_url", help="Base URL of the Joomla site to scan (e.g., http://localhost/joomla/)")
-    parser.add_argument("--username", help="Username for Joomla login", default=default_username)
-    parser.add_argument("--password", help="Password for Joomla login", default=default_password)
-    parser.add_argument("--output", help="Output file for the report", default=default_output)
-    parser.add_argument("--report-404", help="Whether to report 404 errors (yes/no)", default=default_report_404)
-    parser.add_argument("--scan-limit", help="Limit the number of URLs to scan (0 for no limit)", type=int, default=default_scan_limit)
-    parser.add_argument("--nav-links-only", help="Whether to scan only navigational links (yes/no)", default=default_nav_links_only)
-    parser.add_argument("--exclude-terminations", help="Comma-separated list of URL terminations to exclude from 404 reporting", default=','.join(default_exclude_terminations))
-    parser.add_argument("--exclude-downloads", help="Whether to exclude downloadable files from 404 reporting (yes/no)", default=default_exclude_downloads)
-    args = parser.parse_args()
+    base_url = "http://localhost:8082/emsa/extranet"  # Replace with your base URL
+    username = default_username
+    password = default_password
+    output = default_output
+    report_404 = default_report_404.lower() == "yes"
+    scan_limit = default_scan_limit
+    nav_links_only = default_nav_links_only.lower() == "yes"
+    exclude_terminations = default_exclude_terminations
+    exclude_downloads = default_exclude_downloads.lower() == "yes"
+    include_assets = default_include_assets.lower() == "yes"
 
-    report_404 = args.report_404.lower() == "yes"
-    nav_links_only = args.nav_links_only.lower() == "yes"
-    exclude_terminations = [term.strip() for term in args.exclude_terminations.split(',')]
-    exclude_downloads = args.exclude_downloads.lower() == "yes"
-
-    scanner = JoomlaSiteScanner(args.base_url, args.username, args.password, report_404=report_404, scan_limit=args.scan_limit, nav_links_only=nav_links_only, exclude_terminations=exclude_terminations, exclude_downloads=exclude_downloads)
+    scanner = JoomlaSiteScanner(base_url, username, password, report_404=report_404, scan_limit=scan_limit, nav_links_only=nav_links_only, exclude_terminations=exclude_terminations, exclude_downloads=exclude_downloads, include_assets=include_assets)
     scanner.login()  # Authenticate before scanning
     print("Starting scan...")
-    scanner.scan_url(args.base_url)
-    scanner.save_report(args.output)
+    scanner.scan_url(base_url)
+    scanner.save_report(output)
 
-    print(f"Scan completed. Report saved to {args.output}")
+    print(f"Scan completed. Report saved to {output}")
 
 if __name__ == "__main__":
     main()
