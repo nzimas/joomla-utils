@@ -13,13 +13,34 @@ default_scan_limit = 0
 default_nav_links_only = "yes"
 default_exclude_terminations = ["/file"]  # URLs ending with these terms will be excluded from 404 reporting
 default_exclude_downloads = "yes"  # Exclude links to downloadable files from 404 reporting
-default_include_assets = "yes"  # Whether to include assets in the scan and report missing assets as 404 errors
+default_include_assets = "no"  # Whether to include assets in the scan and report missing assets as 404 errors
+
+# User-defined login toggle
+default_use_login = False  # Set to True to enable login; default is False to operate without login
+
 
 class JoomlaSiteScanner:
-    def __init__(self, base_url, username, password, report_404=True, scan_limit=0, nav_links_only=False, exclude_terminations=None, exclude_downloads=True, include_assets=False):
+    def scan_site(self):
+        print(f"Starting scan on: {self.base_url}")
+        try:
+            self.scan_url(self.base_url)
+            print("Scan completed successfully.")
+        except Exception as e:
+            print(f"An error occurred during the scan: {e}")
+
+    def __init__(self, base_url, username, password, report_404=True, scan_limit=0, nav_links_only=False, exclude_terminations=None, exclude_downloads=True, include_assets=False, use_login=default_use_login):
         self.base_url = base_url
         self.username = username
         self.password = password
+
+        # Check if login is required
+        self.use_login = use_login
+        if self.use_login:
+            print(f"Login enabled. Authenticating as user: {self.username}")
+            self.session = requests.Session()
+            self._login()
+        else:
+            print("Login skipped. Operating without authentication.")
         self.report_404 = report_404
         self.scan_limit = scan_limit
         self.nav_links_only = nav_links_only
@@ -200,7 +221,31 @@ class JoomlaSiteScanner:
         with open(filename, "w") as file:
             file.write(self.generate_report())
 
+
 def main():
+    # Example usage of JoomlaSiteScanner
+    base_url = input("Enter the base URL of the Joomla site to scan: ").strip()
+    username = default_username
+    password = default_password
+
+    scanner = JoomlaSiteScanner(
+        base_url=base_url,
+        username=username,
+        password=password,
+        report_404=default_report_404.lower() == "yes",
+        scan_limit=default_scan_limit,
+        nav_links_only=default_nav_links_only.lower() == "yes",
+        exclude_terminations=default_exclude_terminations,
+        exclude_downloads=default_exclude_downloads.lower() == "yes",
+        include_assets=default_include_assets.lower() == "yes",
+        use_login=default_use_login
+    )
+
+    if scanner.use_login:
+        scanner.login()  # Authenticate before scanning
+
+    scanner.scan_site()
+
     base_url = "http://localhost:8082/emsa/extranet"  # Replace with your base URL
     username = default_username
     password = default_password
